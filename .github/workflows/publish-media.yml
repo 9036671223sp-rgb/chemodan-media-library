@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - CHEMODAN_MEDIA_LIBRARY_V3_PUBLIC.zip
+      - .github/workflows/publish-media.yml
   workflow_dispatch:
 
 permissions:
@@ -33,14 +34,11 @@ jobs:
           rm -rf public
           mkdir -p public
           unzip -q CHEMODAN_MEDIA_LIBRARY_V3_PUBLIC.zip -d public
-
           test -d public/CHEMODAN_MEDIA_LIBRARY_V3
           jpg_count="$(find public/CHEMODAN_MEDIA_LIBRARY_V3 -type f -name '*.jpg' | wc -l | tr -d ' ')"
           test "$jpg_count" = "32"
-
           forbidden_count="$(find public -type f \( -name '*.json' -o -name '*.env' -o -name '*.key' -o -name '*.pem' \) | wc -l | tr -d ' ')"
           test "$forbidden_count" = "0"
-
           touch public/.nojekyll
           echo "Validated JPG files: $jpg_count"
 
@@ -59,3 +57,49 @@ jobs:
           git commit -m "Publish verified CHEMODAN media library"
           git remote add origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
           git push --force origin gh-pages
+
+  n8n-api-preflight:
+    runs-on: ubuntu-latest
+    env:
+      N8N_API_KEY: ${{ secrets.N8N_API_KEY }}
+      N8N_URL: https://hot-tours-bot.app.n8n.cloud/api/v1/workflows/1MagZs46gwN9Q0rZ
+      REPORT: automation-results/n8n-api-preflight.json
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Read n8n workflow safely
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$(dirname "$REPORT")"
+          python3 <<'PY'
+          import json, os, urllib.request, urllib.error
+          from pathlib import Path
+          out=Path(os.environ['REPORT'])
+          report={'status':'FAIL','workflow_id':'1MagZs46gwN9Q0rZ','operation':'READ_ONLY_PREFLIGHT','error':None}
+          try:
+              key=os.environ.get('N8N_API_KEY','')
+              if not key: raise RuntimeError('N8N_API_KEY secret is empty or unavailable')
+              req=urllib.request.Request(os.environ['N8N_URL'],headers={'X-N8N-API-KEY':key,'Accept':'application/json'})
+              with urllib.request.urlopen(req,timeout=60) as r:
+                  data=json.loads(r.read().decode())
+              report.update({'status':'PASS','workflow_name':data.get('name'),'active':data.get('active'),'node_count':len(data.get('nodes',[])),'schedule_trigger_count':sum('scheduletrigger' in str(n.get('type','')).lower() for n in data.get('nodes',[])),'webhook_count':sum('webhook' in str(n.get('type','')).lower() for n in data.get('nodes',[]))})
+          except Exception as e:
+              report['error']=str(e)
+          out.write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
+          if report['status']!='PASS': raise SystemExit(1)
+          PY
+
+      - name: Commit preflight report
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          [ -f "$REPORT" ] || exit 0
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "$REPORT"
+          git diff --cached --quiet && exit 0
+          git commit -m "Record n8n API preflight"
+          git push origin main
