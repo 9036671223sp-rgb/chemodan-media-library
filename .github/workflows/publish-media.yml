@@ -6,7 +6,6 @@ on:
       - main
     paths:
       - CHEMODAN_MEDIA_LIBRARY_V3_PUBLIC.zip
-      - .github/workflows/publish-media.yml
   workflow_dispatch:
 
 permissions:
