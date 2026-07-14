@@ -1,0 +1,156 @@
+name: Apply n8n V5.3.4 safe patch
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/n8n-v5-3-4-safe-patch.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: n8n-v5-3-4-safe-patch
+  cancel-in-progress: false
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    env:
+      N8N_BASE_URL: https://hot-tours-bot.app.n8n.cloud/api/v1
+      N8N_WORKFLOW_ID: 1MagZs46gwN9Q0rZ
+      N8N_API_KEY: ${{ secrets.N8N_API_KEY }}
+      REPORT_PATH: automation-results/n8n-v5.3.4-update-report.json
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Patch inactive workflow through n8n public API
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${N8N_API_KEY:-}"
+          mkdir -p "$(dirname "$REPORT_PATH")"
+          python3 <<'PY'
+          import copy, datetime as dt, json, os, sys, urllib.error, urllib.request
+          from pathlib import Path
+
+          base = os.environ['N8N_BASE_URL'].rstrip('/')
+          workflow_id = os.environ['N8N_WORKFLOW_ID']
+          api_key = os.environ['N8N_API_KEY']
+          report_path = Path(os.environ['REPORT_PATH'])
+          report = {'status':'FAIL','timestamp_utc':dt.datetime.now(dt.timezone.utc).isoformat(),'workflow_id':workflow_id,'target_version':'V5.3.4_PICKER_FIXED_SAFE_MANUAL_NO_SEND','active_before':None,'active_after':None,'backup_workflow_id':None,'error':None}
+
+          def write_report():
+              report_path.write_text(json.dumps(report, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+
+          def api(method, path, payload=None):
+              data = None
+              headers = {'X-N8N-API-KEY': api_key, 'Accept': 'application/json'}
+              if payload is not None:
+                  data = json.dumps(payload, ensure_ascii=False).encode('utf-8')
+                  headers['Content-Type'] = 'application/json'
+              req = urllib.request.Request(base + path, data=data, method=method, headers=headers)
+              try:
+                  with urllib.request.urlopen(req, timeout=60) as response:
+                      raw = response.read().decode('utf-8')
+                      return response.status, json.loads(raw) if raw else {}
+              except urllib.error.HTTPError as exc:
+                  body = exc.read().decode('utf-8', errors='replace')
+                  raise RuntimeError(f'n8n API {method} {path} failed: HTTP {exc.code}: {body[:1000]}') from exc
+
+          def get_node(workflow, name):
+              matches = [n for n in workflow.get('nodes', []) if n.get('name') == name]
+              if len(matches) != 1:
+                  raise RuntimeError(f'Expected exactly one node named {name!r}, found {len(matches)}')
+              return matches[0]
+
+          def replace_exact(text, old, new, expected=1):
+              count = text.count(old)
+              if count != expected:
+                  raise RuntimeError(f'Patch contract mismatch: expected {expected}, found {count}: {old[:120]!r}')
+              return text.replace(old, new, expected)
+
+          try:
+              _, current = api('GET', f'/workflows/{workflow_id}')
+              report.update({'workflow_name_before':current.get('name'),'active_before':current.get('active'),'node_count_before':len(current.get('nodes', []))})
+              if current.get('active') is not False: raise RuntimeError('Safety stop: target workflow is active')
+              if 'V5.3.3' not in str(current.get('name','')): raise RuntimeError(f'Safety stop: unexpected workflow name: {current.get("name")!r}')
+              if len(current.get('nodes', [])) != 44: raise RuntimeError('Safety stop: expected 44 nodes before patch')
+              types_before = [str(n.get('type','')).lower() for n in current.get('nodes', [])]
+              if any('scheduletrigger' in t or 'webhook' in t for t in types_before): raise RuntimeError('Safety stop: Schedule Trigger or Webhook found')
+
+              backup_name = current['name'] + ' — BACKUP BEFORE V5.3.4 API PATCH — ' + dt.datetime.now(dt.timezone.utc).strftime('%Y%m%dT%H%M%SZ')
+              _, backup = api('POST', '/workflows', {'name':backup_name,'nodes':current.get('nodes', []),'connections':current.get('connections', {}),'settings':current.get('settings', {})})
+              report.update({'backup_workflow_id':backup.get('id'),'backup_workflow_name':backup.get('name',backup_name),'backup_active':backup.get('active',False)})
+              if not report['backup_workflow_id']: raise RuntimeError('Backup creation returned no ID')
+              if report['backup_active'] is not False: raise RuntimeError('Backup unexpectedly active')
+
+              patched = copy.deepcopy(current)
+              patched['name'] = 'CHEMODAN NEWS V5.3.4 BRANDED MEDIA — PICKER FIXED — SAFE MANUAL NO SEND'
+
+              node = get_node(patched, '02 SETTINGS | безопасность и параметры')
+              code = node['parameters']['jsCode']
+              code = replace_exact(code, 'workflow_name: "CHEMODAN NEWS V5.3.2 BRANDED MEDIA — URL FILLED PREDEPLOY — SAFE NO SEND",', 'workflow_name: "CHEMODAN NEWS V5.3.4 BRANDED MEDIA — PICKER FIXED — SAFE MANUAL NO SEND",')
+              code = replace_exact(code, 'workflow_version: "V5.3.2_BRANDED_MEDIA_URL_FILLED_PREDEPLOY_SAFE_NO_SEND",', 'workflow_version: "V5.3.4_BRANDED_MEDIA_PICKER_FIXED_SAFE_MANUAL_NO_SEND",')
+              code = replace_exact(code, "  media_library_version: 'MEDIA_LIBRARY_V1_32_GITHUB_PAGES_DEPLOYED_VERIFIED_SAFE',\n  media_storage_mode:", "  media_library_version: 'MEDIA_LIBRARY_V1_32_GITHUB_PAGES_DEPLOYED_VERIFIED_SAFE',\n  media_picker_contract_version: 'V5.3.4_DEPLOYED_VERIFIED_ASSET_ACCEPTANCE',\n  media_storage_mode:")
+              code = replace_exact(code, "    media_send_enabled: false,\n    media_library_ready: false,", "    media_send_enabled: false,\n    media_library_ready: true,")
+              node['parameters']['jsCode'] = code
+
+              changes = [
+                ('12B TEMPLATE SELECTOR | library V2 rotation + final dedupe guard', "workflow_name: 'CHEMODAN NEWS V5.3 BRANDED MEDIA — SAFE IMPORT — NO SEND DEFAULT',\n  workflow_version: 'V5.3_BRANDED_MEDIA_SAFE_IMPORT_NO_SEND_DEFAULT',", "workflow_name: 'CHEMODAN NEWS V5.3.4 BRANDED MEDIA — PICKER FIXED — SAFE MANUAL NO SEND',\n  workflow_version: 'V5.3.4_BRANDED_MEDIA_PICKER_FIXED_SAFE_MANUAL_NO_SEND',"),
+                ('09B BUILD | Command Center V3.1 request V5.2 STAGE-GUARD', "caller_workflow_version: data.workflow_version || 'V5.3_BRANDED_MEDIA_SAFE_IMPORT_NO_SEND_DEFAULT',", "caller_workflow_version: data.workflow_version || 'V5.3.4_BRANDED_MEDIA_PICKER_FIXED_SAFE_MANUAL_NO_SEND',"),
+                ('08B EXTRACT | очистить полный текст статьи новой новости', "workflow_name:'CHEMODAN NEWS V5.3 BRANDED MEDIA — SAFE IMPORT — NO SEND DEFAULT',\n  workflow_version:'V5.3_BRANDED_MEDIA_SAFE_IMPORT_NO_SEND_DEFAULT',", "workflow_name:'CHEMODAN NEWS V5.3.4 BRANDED MEDIA — PICKER FIXED — SAFE MANUAL NO SEND',\n  workflow_version:'V5.3.4_BRANDED_MEDIA_PICKER_FIXED_SAFE_MANUAL_NO_SEND',"),
+                ('16A BUILD | DeepSeek media technical JSON request', "caller_workflow_version: first.workflow_version || 'V5.3_BRANDED_MEDIA_SAFE_IMPORT_NO_SEND_DEFAULT',", "caller_workflow_version: first.workflow_version || 'V5.3.4_BRANDED_MEDIA_PICKER_FIXED_SAFE_MANUAL_NO_SEND',")]
+              for name, old, new in changes:
+                  n = get_node(patched, name)
+                  n['parameters']['jsCode'] = replace_exact(n['parameters']['jsCode'], old, new)
+
+              n = get_node(patched, '16 OWNER-GATE | INLINE SAFE GUARD V5.2 build EF/B2B or block')
+              n['parameters']['jsCode'] = replace_exact(n['parameters']['jsCode'], "workflow_name: asText(row.workflow_name) || 'CHEMODAN NEWS V5.3 BRANDED MEDIA — SAFE IMPORT — NO SEND DEFAULT',\n    workflow_version: 'V5.3_BRANDED_MEDIA_SAFE_IMPORT_NO_SEND_DEFAULT',", "workflow_name: asText(row.workflow_name) || 'CHEMODAN NEWS V5.3.4 BRANDED MEDIA — PICKER FIXED — SAFE MANUAL NO SEND',\n    workflow_version: 'V5.3.4_BRANDED_MEDIA_PICKER_FIXED_SAFE_MANUAL_NO_SEND',", 2)
+
+              n = get_node(patched, '17 MEDIA PICKER | V5.3 tag + channel + last 3 covers')
+              old = "  const readyPool = poolAll.filter(x => x.ready === true && txt(x.approval_status).toUpperCase() === 'APPROVED' && /^https:\\/\\//i.test(txt(x.image_url)));"
+              new = "  function assetIsReady(x){\n  const approval = txt(x.approval_status).toUpperCase();\n  const deployment = txt(x.deployment_status).toUpperCase();\n  const technical = txt(x.technical_validation).toUpperCase();\n  const approvedOrVerified = approval === 'APPROVED' || (approval.includes('DEPLOYED') && approval.includes('VERIFIED'));\n  return x.ready === true && x.local_asset_ready === true && technical === 'PASSED' && deployment === 'LIVE_HTTPS_PAGES' && approvedOrVerified && /^https:\\/\\//i.test(txt(x.image_url));\n}\nconst readyPool = poolAll.filter(assetIsReady);"
+              n['parameters']['jsCode'] = replace_exact(n['parameters']['jsCode'], old, new)
+
+              n = get_node(patched, '18 MEDIA GUARD | V5.3 sendPhoto safety gate')
+              old = "  if (row.image_ready !== true) return block(row, 'NO_APPROVED_READY_IMAGE: ' + txt(row.media_picker_status));\n  if (!/^[a-z0-9_\\-]+_(EF|B2B)_\\d{2}\\.(jpg|jpeg|png)$/i.test(filename))"
+              new = "  if (row.image_ready !== true) return block(row, 'NO_APPROVED_READY_IMAGE: ' + txt(row.media_picker_status));\n  const imageApproval = txt(row.image_approval_status).toUpperCase();\n  const imageApprovalOk = imageApproval === 'APPROVED' || (imageApproval.includes('DEPLOYED') && imageApproval.includes('VERIFIED'));\n  if (!imageApprovalOk) return block(row, 'IMAGE_APPROVAL_OR_DEPLOYMENT_PROOF_INVALID: ' + imageApproval);\n  if (!/^[a-z0-9_\\-]+_(EF|B2B)_\\d{2}\\.(jpg|jpeg|png)$/i.test(filename))"
+              n['parameters']['jsCode'] = replace_exact(n['parameters']['jsCode'], old, new)
+
+              n = get_node(patched, '26 FINAL | V5.3 branded media proof + execution log row')
+              code = n['parameters']['jsCode']
+              code = replace_exact(code, "workflow_name: 'CHEMODAN NEWS V5.3 BRANDED MEDIA — SAFE IMPORT — NO SEND DEFAULT',", "workflow_name: 'CHEMODAN NEWS V5.3.4 BRANDED MEDIA — PICKER FIXED — SAFE MANUAL NO SEND',")
+              code = replace_exact(code, "next_step: blocked.length ? 'Populate and approve real media assets, then separately approve both media gates for manual testing.' : 'Keep Active/Schedule/Webhook disabled; perform manual visual verification.'", "next_step: blocked.length ? 'Media assets are deployed and verified. Keep media_send_enabled, owner_gate_approved and final_publication_approved false until a separately authorized manual test.' : 'Keep Active/Schedule/Webhook disabled; perform manual visual verification.'")
+              n['parameters']['jsCode'] = code
+
+              api('PUT', f'/workflows/{workflow_id}', {'name':patched['name'],'nodes':patched.get('nodes', []),'connections':patched.get('connections', {}),'settings':patched.get('settings', {})})
+              _, verified = api('GET', f'/workflows/{workflow_id}')
+              all_code = '\n'.join(str(n.get('parameters',{}).get('jsCode','')) for n in verified.get('nodes', []))
+              types = [str(n.get('type','')).lower() for n in verified.get('nodes', [])]
+              telegram_nodes = [n for n in verified.get('nodes', []) if 'telegram' in str(n.get('type','')).lower()]
+              report.update({'workflow_name_after':verified.get('name'),'active_after':verified.get('active'),'node_count_after':len(verified.get('nodes', [])),'schedule_trigger_count':sum('scheduletrigger' in t for t in types),'webhook_count':sum('webhook' in t for t in types),'telegram_sendphoto_count':sum(str(n.get('parameters',{}).get('operation','')).lower()=='sendphoto' for n in telegram_nodes),'command_center_id_count':all_code.count('43zqbbUUgZSgr8yu'),'media_send_enabled_false':'media_send_enabled: false' in all_code,'owner_gate_approved_false':'owner_gate_approved: false' in all_code,'final_publication_approved_false':'final_publication_approved: false' in all_code,'media_library_ready_true':'media_library_ready: true' in all_code,'picker_contract_present':'V5.3.4_DEPLOYED_VERIFIED_ASSET_ACCEPTANCE' in all_code,'picker_fix_present':'const readyPool = poolAll.filter(assetIsReady);' in all_code,'guard_fix_present':'IMAGE_APPROVAL_OR_DEPLOYMENT_PROOF_INVALID' in all_code,'frolova_publish_block_present':'BLOCKED_CHANNEL_FROLOVA_TURAGENT' in all_code})
+              checks = [verified.get('name')==patched['name'],verified.get('active') is False,len(verified.get('nodes', []))==44,report['schedule_trigger_count']==0,report['webhook_count']==0,report['telegram_sendphoto_count']==1,report['command_center_id_count']>=2,report['media_send_enabled_false'],report['owner_gate_approved_false'],report['final_publication_approved_false'],report['media_library_ready_true'],report['picker_contract_present'],report['picker_fix_present'],report['guard_fix_present'],report['frolova_publish_block_present']]
+              if not all(checks): raise RuntimeError('Post-update verification failed')
+              report['status']='PASS'; report['error']=None; write_report()
+              print('N8N_V5_3_4_SAFE_PATCH_PASS')
+              print(json.dumps({'workflow_id':workflow_id,'backup_workflow_id':report['backup_workflow_id'],'workflow_name_after':report['workflow_name_after'],'active_after':report['active_after'],'node_count_after':report['node_count_after']}, ensure_ascii=False))
+          except Exception as exc:
+              report['error']=str(exc); write_report(); print(f'N8N_V5_3_4_SAFE_PATCH_FAIL: {exc}', file=sys.stderr); raise
+          PY
+
+      - name: Commit safe verification report
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          [ -f "$REPORT_PATH" ] || exit 0
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "$REPORT_PATH"
+          git diff --cached --quiet && exit 0
+          git commit -m "Record n8n V5.3.4 safe patch result"
+          git push origin main
