@@ -1,0 +1,62 @@
+name: Publish CHEMODAN media library
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - CHEMODAN_MEDIA_LIBRARY_V3_PUBLIC.zip
+      - .github/workflows/publish-media.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: chemodan-media-publish
+  cancel-in-progress: true
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Validate and extract media archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f CHEMODAN_MEDIA_LIBRARY_V3_PUBLIC.zip
+          unzip -t CHEMODAN_MEDIA_LIBRARY_V3_PUBLIC.zip
+          rm -rf public
+          mkdir -p public
+          unzip -q CHEMODAN_MEDIA_LIBRARY_V3_PUBLIC.zip -d public
+
+          test -d public/CHEMODAN_MEDIA_LIBRARY_V3
+          jpg_count="$(find public/CHEMODAN_MEDIA_LIBRARY_V3 -type f -name '*.jpg' | wc -l | tr -d ' ')"
+          test "$jpg_count" = "32"
+
+          forbidden_count="$(find public -type f \( -name '*.json' -o -name '*.env' -o -name '*.key' -o -name '*.pem' \) | wc -l | tr -d ' ')"
+          test "$forbidden_count" = "0"
+
+          touch public/.nojekyll
+          echo "Validated JPG files: $jpg_count"
+
+      - name: Publish verified files to gh-pages branch
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          cd public
+          git init
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b gh-pages
+          git add --all
+          git commit -m "Publish verified CHEMODAN media library"
+          git remote add origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git push --force origin gh-pages
