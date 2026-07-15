@@ -1,4 +1,4 @@
-name: Finalize deterministic EF-only safety check
+name: Lock deterministic EF test guard
 on:
   push:
     branches: [main]
@@ -7,7 +7,7 @@ on:
 permissions:
   contents: write
 jobs:
-  verify:
+  lock:
     runs-on: ubuntu-latest
     env:
       N8N_API_KEY: ${{ secrets.N8N_API_KEY }}
@@ -16,41 +16,30 @@ jobs:
       REPORT: automation-results/deterministic-ef-test.json
     steps:
       - uses: actions/checkout@v4
-      - name: Remove legacy note and verify EF-only workflow
+      - name: Lock guard
         shell: bash
         run: |
-          set -u
+          set -euo pipefail
           mkdir -p automation-results
           python3 <<'PY'
-          import json,os,urllib.request,urllib.error
-          out={'status':'FAIL','operation':'FINALIZE_DETERMINISTIC_EF_TEST'}
-          try:
-              base=os.environ['BASE']; key=os.environ['N8N_API_KEY']; target=os.environ['TARGET']
-              def api(method,path,payload=None):
-                  data=None; h={'X-N8N-API-KEY':key,'Accept':'application/json'}
-                  if payload is not None:
-                      data=json.dumps(payload,ensure_ascii=False).encode(); h['Content-Type']='application/json'
-                  req=urllib.request.Request(base+path,data=data,method=method,headers=h)
-                  try:
-                      with urllib.request.urlopen(req,timeout=90) as r:
-                          raw=r.read().decode(); return json.loads(raw) if raw else {}
-                  except urllib.error.HTTPError as e:
-                      raise RuntimeError(f'{method} {path} HTTP {e.code}: '+e.read().decode('utf-8','replace')[:1000]) from e
-              w=api('GET',f'/workflows/{target}')
-              for n in w.get('nodes',[]):
-                  if n.get('type')=='n8n-nodes-base.telegram':
-                      n['notes']='Deterministic one-shot: EF Travel Club only. Repeat blocked by AI_EDITOR_LOG.'
-              payload={'name':w['name'],'nodes':w['nodes'],'connections':w.get('connections',{}),'settings':{}}
-              api('PUT',f'/workflows/{target}',payload)
-              full=api('GET',f'/workflows/{target}')
-              text=json.dumps(full,ensure_ascii=False)
-              out={'status':'PASS','operation':'FINALIZE_DETERMINISTIC_EF_TEST','workflow_id':full.get('id'),'workflow_name':full.get('name'),'active':full.get('active'),'node_count':len(full.get('nodes',[])),'schedule_trigger_count':sum('scheduletrigger' in str(n.get('type','')).lower() for n in full.get('nodes',[])),'webhook_count':sum('webhook' in str(n.get('type','')).lower() for n in full.get('nodes',[])),'telegram_node_count':sum(n.get('type')=='n8n-nodes-base.telegram' for n in full.get('nodes',[])),'ef_present':'@EF_Travel_Club' in text,'b2b_present':'@travelclub_elena' in text,'frolova_present':'@frolova_turagent' in text,'deterministic_image':'money_prices_EF_01.jpg' in text,'repeat_guard_present':'ALREADY_SENT' in text}
-              if not (out['active'] is False and out['node_count']==7 and out['schedule_trigger_count']==0 and out['webhook_count']==0 and out['telegram_node_count']==1 and out['ef_present'] and not out['b2b_present'] and not out['frolova_present'] and out['deterministic_image'] and out['repeat_guard_present']):
-                  raise RuntimeError('Safety contract failed')
-          except Exception as e:
-              out['status']='FAIL'; out['error']=str(e); out['error_type']=type(e).__name__
+          import json,os,urllib.request
+          base=os.environ['BASE']; key=os.environ['N8N_API_KEY']; target=os.environ['TARGET']
+          def api(method,path,payload=None):
+              data=None; headers={'X-N8N-API-KEY':key,'Accept':'application/json'}
+              if payload is not None:
+                  data=json.dumps(payload,ensure_ascii=False).encode(); headers['Content-Type']='application/json'
+              req=urllib.request.Request(base+path,data=data,method=method,headers=headers)
+              with urllib.request.urlopen(req,timeout=90) as r:
+                  raw=r.read().decode(); return json.loads(raw) if raw else {}
+          w=api('GET',f'/workflows/{target}')
+          guard=next(n for n in w['nodes'] if n.get('name','').startswith('03 GUARD'))
+          guard['parameters']['jsCode']="return [{json:{allowed:false,reason:'LOCKED_AFTER_TEST',telegram_send_disabled:true,timestamp:new Date().toISOString()}}];"
+          api('PUT',f'/workflows/{target}',{'name':'CHEMODAN NEWS V5.3.4 — ONE SHOT EF TEST — COMPLETED LOCKED','nodes':w['nodes'],'connections':w.get('connections',{}),'settings':{}})
+          full=api('GET',f'/workflows/{target}')
+          code=next(n for n in full['nodes'] if n.get('name','').startswith('03 GUARD'))['parameters']['jsCode']
+          out={'status':'PASS','operation':'LOCK_EF_TEST_GUARD','workflow_id':full.get('id'),'workflow_name':full.get('name'),'active':full.get('active'),'locked_after_test':'LOCKED_AFTER_TEST' in code,'schedule_trigger_count':sum('scheduletrigger' in str(n.get('type','')).lower() for n in full.get('nodes',[])),'webhook_count':sum('webhook' in str(n.get('type','')).lower() for n in full.get('nodes',[]))}
+          assert out['active'] is False and out['locked_after_test'] and out['schedule_trigger_count']==0 and out['webhook_count']==0
           open(os.environ['REPORT'],'w',encoding='utf-8').write(json.dumps(out,ensure_ascii=False,indent=2)+'\n')
-          if out['status']!='PASS': raise SystemExit(1)
           PY
       - name: Save report
         if: always()
@@ -58,4 +47,4 @@ jobs:
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
           git add automation-results/deterministic-ef-test.json
-          git diff --cached --quiet || (git commit -m 'Record final deterministic EF safety check' && git push)
+          git diff --cached --quiet || (git commit -m 'Record locked EF test guard' && git push)
