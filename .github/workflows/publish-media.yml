@@ -1,5 +1,5 @@
 name: Publish CHEMODAN media library
-# diagnostic-after-key-rotation: 2026-07-15T00:01:00Z
+# direct-id-preflight-after-key-rotation: 2026-07-15T00:03:00Z
 
 on:
   push:
@@ -19,45 +19,45 @@ jobs:
     env:
       N8N_API_KEY: ${{ secrets.N8N_API_KEY }}
       N8N_HEALTH_URL: https://hot-tours-bot.app.n8n.cloud/healthz
-      N8N_API_URL: https://hot-tours-bot.app.n8n.cloud/api/v1/workflows
+      N8N_API_URL: https://hot-tours-bot.app.n8n.cloud/api/v1/workflows/1MagZs46gwN9Q0rZ
     steps:
       - uses: actions/checkout@v4
-      - name: Diagnose n8n availability and API access
+      - name: Verify direct n8n workflow ID
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p automation-results
           if [ -z "${N8N_API_KEY:-}" ]; then
-            printf '%s\n' '{"status":"FAIL","operation":"N8N_DIAGNOSTIC_PREFLIGHT","error":"N8N_API_KEY secret is empty or unavailable"}' > automation-results/n8n-preflight.json
+            printf '%s\n' '{"status":"FAIL","operation":"DIRECT_ID_READ_ONLY_PREFLIGHT","error":"N8N_API_KEY secret is empty or unavailable"}' > automation-results/n8n-preflight.json
             exit 1
           fi
-          health_code="$(curl --http1.1 --silent --show-error --location --retry 3 --retry-all-errors --retry-delay 3 --connect-timeout 20 --max-time 60 -A 'CHEMODAN-SAFE-DIAGNOSTIC/1.0' -o /tmp/health.txt -w '%{http_code}' "${N8N_HEALTH_URL}" || true)"
-          api_code="$(curl --http1.1 --silent --show-error --location --retry 3 --retry-all-errors --retry-delay 3 --connect-timeout 20 --max-time 90 -A 'CHEMODAN-SAFE-DIAGNOSTIC/1.0' -H "X-N8N-API-KEY: ${N8N_API_KEY}" -H 'Accept: application/json' -o /tmp/n8n.json -w '%{http_code}' "${N8N_API_URL}" || true)"
+          health_code="$(curl --http1.1 --silent --show-error --location --retry 3 --retry-all-errors --retry-delay 3 --connect-timeout 20 --max-time 60 -A 'CHEMODAN-SAFE-DIRECT-ID/1.0' -o /tmp/health.txt -w '%{http_code}' "${N8N_HEALTH_URL}" || true)"
+          api_code="$(curl --http1.1 --silent --show-error --location --retry 3 --retry-all-errors --retry-delay 3 --connect-timeout 20 --max-time 90 -A 'CHEMODAN-SAFE-DIRECT-ID/1.0' -H "X-N8N-API-KEY: ${N8N_API_KEY}" -H 'Accept: application/json' -o /tmp/n8n.json -w '%{http_code}' "${N8N_API_URL}" || true)"
           python3 - "$health_code" "$api_code" <<'PY'
           import json,sys
           health_code,api_code=sys.argv[1],sys.argv[2]
           try:
-              payload=json.load(open('/tmp/n8n.json',encoding='utf-8'))
+              workflow=json.load(open('/tmp/n8n.json',encoding='utf-8'))
           except Exception:
-              payload={}
-          items=payload.get('data',[]) if api_code=='200' and isinstance(payload,dict) else []
-          matches=[w for w in items if 'CHEMODAN NEWS V5.3.3 BRANDED MEDIA' in str(w.get('name',''))]
+              workflow={}
+          types=[str(n.get('type','')).lower() for n in workflow.get('nodes',[])] if api_code=='200' else []
           report={
-            'status':'PASS' if health_code=='200' and api_code=='200' and len(matches)==1 else 'FAIL',
-            'operation':'N8N_DIAGNOSTIC_PREFLIGHT',
+            'status':'PASS' if health_code=='200' and api_code=='200' and workflow.get('active') is False and len(workflow.get('nodes',[]))==44 and sum('scheduletrigger' in t for t in types)==0 and sum('webhook' in t for t in types)==0 else 'FAIL',
+            'operation':'DIRECT_ID_READ_ONLY_PREFLIGHT',
             'health_http_code':health_code,
             'api_http_code':api_code,
-            'visible_workflow_count':len(items),
-            'target_match_count':len(matches),
-            'target_workflow_id':matches[0].get('id') if len(matches)==1 else None,
-            'target_workflow_name':matches[0].get('name') if len(matches)==1 else None,
-            'target_active':matches[0].get('active') if len(matches)==1 else None
+            'target_workflow_id':workflow.get('id'),
+            'target_workflow_name':workflow.get('name'),
+            'target_active':workflow.get('active'),
+            'node_count':len(workflow.get('nodes',[])) if isinstance(workflow,dict) else 0,
+            'schedule_trigger_count':sum('scheduletrigger' in t for t in types),
+            'webhook_count':sum('webhook' in t for t in types)
           }
-          if report['status']!='PASS': report['error']='Health/API/target contract not satisfied'
+          if report['status']!='PASS': report['error']='Direct ID safety contract not satisfied'
           open('automation-results/n8n-preflight.json','w',encoding='utf-8').write(json.dumps(report,ensure_ascii=False,indent=2)+'\n')
           if report['status']!='PASS': raise SystemExit(1)
           PY
-      - name: Commit diagnostic report
+      - name: Commit direct-ID preflight report
         if: always()
         shell: bash
         run: |
@@ -67,7 +67,7 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add automation-results/n8n-preflight.json
           git diff --cached --quiet && exit 0
-          git commit -m "Record n8n diagnostic preflight"
+          git commit -m "Record direct-ID n8n preflight"
           git push
 
   publish:
