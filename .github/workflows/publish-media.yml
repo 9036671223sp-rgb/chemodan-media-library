@@ -6,7 +6,6 @@ on:
       - main
     paths:
       - CHEMODAN_MEDIA_LIBRARY_V3_PUBLIC.zip
-      - .github/workflows/publish-media.yml
   workflow_dispatch:
 
 permissions:
@@ -57,81 +56,3 @@ jobs:
           git commit -m "Publish verified CHEMODAN media library"
           git remote add origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
           git push --force origin gh-pages
-
-  n8n-v5-3-4-safe-patch:
-    runs-on: ubuntu-latest
-    env:
-      N8N_API_KEY: ${{ secrets.N8N_API_KEY }}
-      N8N_BASE: https://hot-tours-bot.app.n8n.cloud/api/v1
-      REPORT: automation-results/n8n-v5.3.4-patch-result.json
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Apply atomic safe patch and verify
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 <<'PY'
-          import copy
-          import importlib.util
-
-          path = '.github/scripts/apply_n8n_v534_patch.py'
-          spec = importlib.util.spec_from_file_location('chemodan_patch', path)
-          module = importlib.util.module_from_spec(spec)
-          spec.loader.exec_module(module)
-
-          original_body = module.workflow_body
-          allowed_settings = {
-              'saveExecutionProgress', 'saveManualExecutions',
-              'saveDataErrorExecution', 'saveDataSuccessExecution',
-              'executionTimeout', 'errorWorkflow', 'timezone',
-              'executionOrder', 'callerPolicy'
-          }
-          def api_compatible_body(workflow):
-              body = copy.deepcopy(original_body(workflow))
-              for node in body.get('nodes', []):
-                  if 'notes' in node and not isinstance(node.get('notes'), str):
-                      node.pop('notes', None)
-              body['settings'] = {
-                  key: value for key, value in body.get('settings', {}).items()
-                  if key in allowed_settings
-              }
-              return body
-          module.workflow_body = api_compatible_body
-
-          before = module.api('GET', f'workflows/{module.WORKFLOW_ID}')
-          before_hash = module.canonical_hash(before)
-          if before.get('name') == module.NEW_NAME:
-              module.EXPECTED_BEFORE_HASH = before_hash
-              module.EXPECTED_AFTER_HASH = before_hash
-          elif before.get('name') == module.OLD_NAME:
-              patched_preview = module.patch_workflow(before)
-              module.EXPECTED_BEFORE_HASH = before_hash
-              module.EXPECTED_AFTER_HASH = module.canonical_hash(patched_preview)
-          else:
-              raise RuntimeError(f"Unexpected workflow name: {before.get('name')}")
-
-          original_validate = module.validate_safety
-          def validate_without_notes_false_positive(workflow):
-              cleaned = copy.deepcopy(workflow)
-              for node in cleaned.get('nodes', []):
-                  if 'telegram' in str(node.get('type', '')).lower():
-                      node.pop('notes', None)
-              return original_validate(cleaned)
-          module.validate_safety = validate_without_notes_false_positive
-          module.main()
-          PY
-
-      - name: Commit patch report
-        if: always()
-        shell: bash
-        run: |
-          set -euo pipefail
-          [ -f "$REPORT" ] || exit 0
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add "$REPORT"
-          git diff --cached --quiet && exit 0
-          git commit -m "Record n8n V5.3.4 safe patch result"
-          git push origin main
