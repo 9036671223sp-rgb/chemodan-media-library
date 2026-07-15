@@ -82,11 +82,21 @@ jobs:
           spec.loader.exec_module(module)
 
           original_body = module.workflow_body
+          allowed_settings = {
+              'saveExecutionProgress', 'saveManualExecutions',
+              'saveDataErrorExecution', 'saveDataSuccessExecution',
+              'executionTimeout', 'errorWorkflow', 'timezone',
+              'executionOrder', 'callerPolicy'
+          }
           def api_compatible_body(workflow):
               body = copy.deepcopy(original_body(workflow))
               for node in body.get('nodes', []):
                   if 'notes' in node and not isinstance(node.get('notes'), str):
                       node.pop('notes', None)
+              body['settings'] = {
+                  key: value for key, value in body.get('settings', {}).items()
+                  if key in allowed_settings
+              }
               return body
           module.workflow_body = api_compatible_body
 
