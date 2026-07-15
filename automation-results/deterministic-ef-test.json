@@ -1,16 +1,10 @@
 {
   "status": "PASS",
-  "operation": "FINALIZE_DETERMINISTIC_EF_TEST",
+  "operation": "LOCK_EF_TEST_GUARD",
   "workflow_id": "6oph5ifW9zc5kYGP",
-  "workflow_name": "CHEMODAN NEWS V5.3.4 — ONE SHOT EF DETERMINISTIC — MANUAL INACTIVE",
+  "workflow_name": "CHEMODAN NEWS V5.3.4 — ONE SHOT EF TEST — COMPLETED LOCKED",
   "active": false,
-  "node_count": 7,
+  "locked_after_test": true,
   "schedule_trigger_count": 0,
-  "webhook_count": 0,
-  "telegram_node_count": 1,
-  "ef_present": true,
-  "b2b_present": false,
-  "frolova_present": false,
-  "deterministic_image": true,
-  "repeat_guard_present": true
+  "webhook_count": 0
 }
