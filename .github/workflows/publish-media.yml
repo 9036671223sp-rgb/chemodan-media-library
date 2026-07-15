@@ -6,16 +6,50 @@ on:
       - main
     paths:
       - CHEMODAN_MEDIA_LIBRARY_V3_PUBLIC.zip
+      - .github/workflows/publish-media.yml
   workflow_dispatch:
 
 permissions:
   contents: write
 
-concurrency:
-  group: chemodan-media-publish
-  cancel-in-progress: true
-
 jobs:
+  n8n_preflight:
+    runs-on: ubuntu-latest
+    env:
+      N8N_API_KEY: ${{ secrets.N8N_API_KEY }}
+      N8N_URL: https://hot-tours-bot.app.n8n.cloud/api/v1/workflows/1MagZs46gwN9Q0rZ
+    steps:
+      - uses: actions/checkout@v4
+      - name: Read and verify inactive n8n workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${N8N_API_KEY:-}"
+          mkdir -p automation-results
+          python3 - <<'PY'
+          import json, os, urllib.request
+          req=urllib.request.Request(os.environ['N8N_URL'],headers={'X-N8N-API-KEY':os.environ['N8N_API_KEY'],'Accept':'application/json'})
+          with urllib.request.urlopen(req,timeout=60) as r: w=json.load(r)
+          types=[str(n.get('type','')).lower() for n in w.get('nodes',[])]
+          report={'status':'PASS','operation':'READ_ONLY_PREFLIGHT','workflow_id':w.get('id'),'workflow_name':w.get('name'),'active':w.get('active'),'node_count':len(w.get('nodes',[])),'schedule_trigger_count':sum('scheduletrigger' in t for t in types),'webhook_count':sum('webhook' in t for t in types)}
+          checks=[w.get('active') is False,len(w.get('nodes',[]))==44,report['schedule_trigger_count']==0,report['webhook_count']==0,'V5.3.3' in str(w.get('name',''))]
+          if not all(checks): report['status']='FAIL'; report['error']='Safety contract failed'
+          open('automation-results/n8n-preflight.json','w',encoding='utf-8').write(json.dumps(report,ensure_ascii=False,indent=2)+'\n')
+          if report['status']!='PASS': raise SystemExit(1)
+          PY
+      - name: Commit preflight report
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f automation-results/n8n-preflight.json || exit 0
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add automation-results/n8n-preflight.json
+          git diff --cached --quiet && exit 0
+          git commit -m "Record read-only n8n preflight"
+          git push
+
   publish:
     runs-on: ubuntu-latest
     steps:
@@ -23,7 +57,6 @@ jobs:
         uses: actions/checkout@v4
         with:
           persist-credentials: false
-
       - name: Validate and extract media archive
         shell: bash
         run: |
@@ -39,8 +72,6 @@ jobs:
           forbidden_count="$(find public -type f \( -name '*.json' -o -name '*.env' -o -name '*.key' -o -name '*.pem' \) | wc -l | tr -d ' ')"
           test "$forbidden_count" = "0"
           touch public/.nojekyll
-          echo "Validated JPG files: $jpg_count"
-
       - name: Publish verified files to gh-pages branch
         shell: bash
         env:
