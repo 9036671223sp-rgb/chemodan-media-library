@@ -1,6 +1,12 @@
 {
-  "status": "FAIL",
+  "status": "PASS",
   "operation": "CREATE_ONE_SHOT_EF_TEST",
-  "error": "POST /workflows HTTP 400: {\"message\":\"request/body/settings must NOT have additional properties\"}",
-  "error_type": "RuntimeError"
+  "workflow_id": "6oph5ifW9zc5kYGP",
+  "workflow_name": "CHEMODAN NEWS V5.3.4 — ONE SHOT EF TEST — MANUAL INACTIVE",
+  "active": false,
+  "node_count": 44,
+  "schedule_trigger_count": 0,
+  "webhook_count": 0,
+  "ef_only_guard": true,
+  "three_gates_enabled": true
 }
