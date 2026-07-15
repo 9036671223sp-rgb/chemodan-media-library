@@ -1,6 +1,12 @@
 {
   "status": "FAIL",
-  "operation": "CURL_READ_ONLY_PREFLIGHT",
-  "http_code": "503",
-  "error": "n8n API did not return HTTP 200"
+  "operation": "N8N_DIAGNOSTIC_PREFLIGHT",
+  "health_http_code": "200",
+  "api_http_code": "200",
+  "visible_workflow_count": 100,
+  "target_match_count": 0,
+  "target_workflow_id": null,
+  "target_workflow_name": null,
+  "target_active": null,
+  "error": "Health/API/target contract not satisfied"
 }
