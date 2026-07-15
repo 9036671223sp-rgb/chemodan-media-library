@@ -1,6 +1,6 @@
 {
   "status": "FAIL",
-  "operation": "READ_ONLY_LIST_PREFLIGHT",
-  "attempts": 5,
-  "error": "HTTP Error 502: Bad Gateway"
+  "operation": "CURL_READ_ONLY_PREFLIGHT",
+  "http_code": "503",
+  "error": "n8n API did not return HTTP 200"
 }
