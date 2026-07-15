@@ -75,12 +75,20 @@ jobs:
           python3 <<'PY'
           import copy
           import importlib.util
-          import os
 
           path = '.github/scripts/apply_n8n_v534_patch.py'
           spec = importlib.util.spec_from_file_location('chemodan_patch', path)
           module = importlib.util.module_from_spec(spec)
           spec.loader.exec_module(module)
+
+          original_body = module.workflow_body
+          def api_compatible_body(workflow):
+              body = copy.deepcopy(original_body(workflow))
+              for node in body.get('nodes', []):
+                  if 'notes' in node and not isinstance(node.get('notes'), str):
+                      node.pop('notes', None)
+              return body
+          module.workflow_body = api_compatible_body
 
           before = module.api('GET', f'workflows/{module.WORKFLOW_ID}')
           before_hash = module.canonical_hash(before)
