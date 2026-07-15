@@ -2,5 +2,5 @@
   "status": "FAIL",
   "workflow_id": "1MagZs46gwN9Q0rZ",
   "operation": "READ_ONLY_PREFLIGHT",
-  "error": "N8N_API_KEY secret is empty or unavailable"
+  "error": "HTTP Error 404: Not Found"
 }
