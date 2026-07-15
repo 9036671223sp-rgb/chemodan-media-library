@@ -1,5 +1,5 @@
 name: Create one-shot EF test workflow
-# trigger-retry: 2
+# trigger-retry: 3
 on:
   push:
     branches: [main]
@@ -23,16 +23,20 @@ jobs:
           set -u
           mkdir -p automation-results
           python3 <<'PY'
-          import json, os, urllib.request, urllib.parse, traceback
-          report=os.environ['REPORT']
-          out={'status':'FAIL','operation':'CREATE_ONE_SHOT_EF_TEST'}
+          import json, os, urllib.request, urllib.parse, urllib.error
+          report=os.environ['REPORT']; out={'status':'FAIL','operation':'CREATE_ONE_SHOT_EF_TEST'}
           try:
               base=os.environ['N8N_BASE']; key=os.environ['N8N_API_KEY']; src=os.environ['SOURCE_ID']
               def api(method,path,payload=None):
                   data=None; h={'X-N8N-API-KEY':key,'Accept':'application/json'}
                   if payload is not None: data=json.dumps(payload,ensure_ascii=False).encode(); h['Content-Type']='application/json'
-                  with urllib.request.urlopen(urllib.request.Request(base+path,data=data,method=method,headers=h),timeout=90) as r:
-                      raw=r.read().decode(); return json.loads(raw) if raw else {}
+                  req=urllib.request.Request(base+path,data=data,method=method,headers=h)
+                  try:
+                      with urllib.request.urlopen(req,timeout=90) as r:
+                          raw=r.read().decode(); return json.loads(raw) if raw else {}
+                  except urllib.error.HTTPError as e:
+                      body=e.read().decode('utf-8','replace')[:1500]
+                      raise RuntimeError(f'{method} {path} HTTP {e.code}: {body}') from e
               w=api('GET',f'/workflows/{src}')
               assert w.get('active') is False and len(w.get('nodes',[]))==44
               assert not any('scheduletrigger' in str(n.get('type','')).lower() or 'webhook' in str(n.get('type','')).lower() for n in w['nodes'])
