@@ -24,17 +24,24 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test -n "${N8N_API_KEY:-}"
           mkdir -p automation-results
+          if [ -z "${N8N_API_KEY:-}" ]; then
+            printf '%s\n' '{"status":"FAIL","operation":"READ_ONLY_PREFLIGHT","error":"N8N_API_KEY secret is empty or unavailable"}' > automation-results/n8n-preflight.json
+            exit 1
+          fi
           python3 - <<'PY'
-          import json, os, urllib.request
-          req=urllib.request.Request(os.environ['N8N_URL'],headers={'X-N8N-API-KEY':os.environ['N8N_API_KEY'],'Accept':'application/json'})
-          with urllib.request.urlopen(req,timeout=60) as r: w=json.load(r)
-          types=[str(n.get('type','')).lower() for n in w.get('nodes',[])]
-          report={'status':'PASS','operation':'READ_ONLY_PREFLIGHT','workflow_id':w.get('id'),'workflow_name':w.get('name'),'active':w.get('active'),'node_count':len(w.get('nodes',[])),'schedule_trigger_count':sum('scheduletrigger' in t for t in types),'webhook_count':sum('webhook' in t for t in types)}
-          checks=[w.get('active') is False,len(w.get('nodes',[]))==44,report['schedule_trigger_count']==0,report['webhook_count']==0,'V5.3.3' in str(w.get('name',''))]
-          if not all(checks): report['status']='FAIL'; report['error']='Safety contract failed'
-          open('automation-results/n8n-preflight.json','w',encoding='utf-8').write(json.dumps(report,ensure_ascii=False,indent=2)+'\n')
+          import json, os, urllib.error, urllib.request
+          path='automation-results/n8n-preflight.json'
+          try:
+              req=urllib.request.Request(os.environ['N8N_URL'],headers={'X-N8N-API-KEY':os.environ['N8N_API_KEY'],'Accept':'application/json'})
+              with urllib.request.urlopen(req,timeout=60) as r: w=json.load(r)
+              types=[str(n.get('type','')).lower() for n in w.get('nodes',[])]
+              report={'status':'PASS','operation':'READ_ONLY_PREFLIGHT','workflow_id':w.get('id'),'workflow_name':w.get('name'),'active':w.get('active'),'node_count':len(w.get('nodes',[])),'schedule_trigger_count':sum('scheduletrigger' in t for t in types),'webhook_count':sum('webhook' in t for t in types)}
+              checks=[w.get('active') is False,len(w.get('nodes',[]))==44,report['schedule_trigger_count']==0,report['webhook_count']==0,'V5.3.3' in str(w.get('name',''))]
+              if not all(checks): report['status']='FAIL'; report['error']='Safety contract failed'
+          except Exception as exc:
+              report={'status':'FAIL','operation':'READ_ONLY_PREFLIGHT','error':str(exc)}
+          open(path,'w',encoding='utf-8').write(json.dumps(report,ensure_ascii=False,indent=2)+'\n')
           if report['status']!='PASS': raise SystemExit(1)
           PY
       - name: Commit preflight report
