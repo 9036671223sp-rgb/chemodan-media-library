@@ -1,5 +1,5 @@
 name: Create one-shot EF test workflow
-# trigger-retry: 3
+# trigger-retry: 4
 on:
   push:
     branches: [main]
@@ -53,7 +53,7 @@ jobs:
               marker="  const target = txt(row.target_channel);"
               g=g.replace(marker,"  if (channelKey !== 'EF') return block(row, 'ONE_SHOT_TEST_EF_ONLY');\n"+marker,1)
               node('18 MEDIA GUARD | V5.3 sendPhoto safety gate')['parameters']['jsCode']=g
-              payload={'name':name,'nodes':w['nodes'],'connections':w.get('connections',{}),'settings':w.get('settings',{})}
+              payload={'name':name,'nodes':w['nodes'],'connections':w.get('connections',{}),'settings':{}}
               listed=api('GET','/workflows?name='+urllib.parse.quote(name))
               matches=[x for x in listed.get('data',[]) if x.get('name')==name]
               test=api('PUT',f"/workflows/{matches[0]['id']}",payload) if len(matches)==1 else api('POST','/workflows',payload)
