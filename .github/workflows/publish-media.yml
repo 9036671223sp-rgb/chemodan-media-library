@@ -1,5 +1,5 @@
 name: Publish CHEMODAN media library
-# locate-v5-3-4-page-2: 2026-07-15T00:06:00Z
+# verify-v5-3-4-full-config: 2026-07-15T00:07:00Z
 
 on:
   push:
@@ -18,44 +18,75 @@ jobs:
     runs-on: ubuntu-latest
     env:
       N8N_API_KEY: ${{ secrets.N8N_API_KEY }}
-      N8N_API_URL: https://hot-tours-bot.app.n8n.cloud/api/v1/workflows?limit=100&cursor=eyJsaW1pdCI6MTAwLCJvZmZzZXQiOjEwMH0%3D
+      N8N_API_URL: https://hot-tours-bot.app.n8n.cloud/api/v1/workflows/iMagZs46gwN9Q0rZ
     steps:
       - uses: actions/checkout@v4
-      - name: Locate V5.3.4 on second workflow page
+      - name: Verify full V5.3.4 safety contract
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p automation-results
           if [ -z "${N8N_API_KEY:-}" ]; then
-            printf '%s\n' '{"status":"FAIL","operation":"LOCATE_V5_3_4_PAGE_2","error":"N8N_API_KEY secret is empty or unavailable"}' > automation-results/n8n-preflight.json
+            printf '%s\n' '{"status":"FAIL","operation":"VERIFY_V5_3_4_FULL_CONFIG","error":"N8N_API_KEY secret is empty or unavailable"}' > automation-results/n8n-preflight.json
             exit 1
           fi
-          api_code="$(curl --http1.1 --silent --show-error --location --retry 3 --retry-all-errors --retry-delay 3 --connect-timeout 20 --max-time 90 -A 'CHEMODAN-SAFE-LOCATE/1.0' -H "X-N8N-API-KEY: ${N8N_API_KEY}" -H 'Accept: application/json' -o /tmp/n8n.json -w '%{http_code}' "${N8N_API_URL}" || true)"
+          api_code="$(curl --http1.1 --silent --show-error --location --retry 3 --retry-all-errors --retry-delay 3 --connect-timeout 20 --max-time 90 -A 'CHEMODAN-SAFE-VERIFY/1.0' -H "X-N8N-API-KEY: ${N8N_API_KEY}" -H 'Accept: application/json' -o /tmp/n8n.json -w '%{http_code}' "${N8N_API_URL}" || true)"
           python3 - "$api_code" <<'PY'
           import json,sys
           code=sys.argv[1]
           try:
-              payload=json.load(open('/tmp/n8n.json',encoding='utf-8'))
+              workflow=json.load(open('/tmp/n8n.json',encoding='utf-8'))
           except Exception:
-              payload={}
-          items=payload.get('data',[]) if code=='200' and isinstance(payload,dict) else []
-          matches=[w for w in items if 'CHEMODAN NEWS V5.3.4 BRANDED MEDIA' in str(w.get('name',''))]
+              workflow={}
+          nodes=workflow.get('nodes',[]) if code=='200' and isinstance(workflow,dict) else []
+          types=[str(n.get('type','')).lower() for n in nodes]
+          telegram=[n for n in nodes if 'telegram' in str(n.get('type','')).lower()]
+          all_code='\n'.join(str(n.get('parameters',{}).get('jsCode','')) for n in nodes)
           report={
-            'status':'PASS' if code=='200' and len(matches)==1 else 'FAIL',
-            'operation':'LOCATE_V5_3_4_PAGE_2',
+            'status':'FAIL',
+            'operation':'VERIFY_V5_3_4_FULL_CONFIG',
             'api_http_code':code,
-            'page_item_count':len(items),
-            'target_match_count':len(matches),
-            'target_workflow_id':matches[0].get('id') if len(matches)==1 else None,
-            'target_workflow_name':matches[0].get('name') if len(matches)==1 else None,
-            'target_active':matches[0].get('active') if len(matches)==1 else None,
-            'next_cursor':payload.get('nextCursor') if isinstance(payload,dict) else None
+            'workflow_id':workflow.get('id'),
+            'workflow_name':workflow.get('name'),
+            'active':workflow.get('active'),
+            'node_count':len(nodes),
+            'schedule_trigger_count':sum('scheduletrigger' in t for t in types),
+            'webhook_count':sum('webhook' in t for t in types),
+            'telegram_sendphoto_count':sum(str(n.get('parameters',{}).get('operation','')).lower()=='sendphoto' for n in telegram),
+            'command_center_id_count':all_code.count('43zqbbUUgZSgr8yu'),
+            'media_send_enabled_false':'media_send_enabled: false' in all_code,
+            'owner_gate_approved_false':'owner_gate_approved: false' in all_code,
+            'final_publication_approved_false':'final_publication_approved: false' in all_code,
+            'media_library_ready_true':'media_library_ready: true' in all_code,
+            'picker_contract_present':'V5.3.4_DEPLOYED_VERIFIED_ASSET_ACCEPTANCE' in all_code,
+            'picker_fix_present':'const readyPool = poolAll.filter(assetIsReady);' in all_code,
+            'guard_fix_present':'IMAGE_APPROVAL_OR_DEPLOYMENT_PROOF_INVALID' in all_code,
+            'frolova_publish_block_present':'BLOCKED_CHANNEL_FROLOVA_TURAGENT' in all_code
           }
-          if report['status']!='PASS': report['error']='Expected exactly one V5.3.4 workflow on page 2'
+          checks=[
+            code=='200',
+            workflow.get('name')=='CHEMODAN NEWS V5.3.4 BRANDED MEDIA — PICKER FIXED — SAFE MANUAL NO SEND',
+            workflow.get('active') is False,
+            len(nodes)==44,
+            report['schedule_trigger_count']==0,
+            report['webhook_count']==0,
+            report['telegram_sendphoto_count']==1,
+            report['command_center_id_count']>=2,
+            report['media_send_enabled_false'],
+            report['owner_gate_approved_false'],
+            report['final_publication_approved_false'],
+            report['media_library_ready_true'],
+            report['picker_contract_present'],
+            report['picker_fix_present'],
+            report['guard_fix_present'],
+            report['frolova_publish_block_present']
+          ]
+          if all(checks): report['status']='PASS'
+          else: report['error']='One or more V5.3.4 safety checks failed'
           open('automation-results/n8n-preflight.json','w',encoding='utf-8').write(json.dumps(report,ensure_ascii=False,indent=2)+'\n')
           if report['status']!='PASS': raise SystemExit(1)
           PY
-      - name: Commit V5.3.4 locator report
+      - name: Commit V5.3.4 verification report
         if: always()
         shell: bash
         run: |
@@ -65,7 +96,7 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add automation-results/n8n-preflight.json
           git diff --cached --quiet && exit 0
-          git commit -m "Locate V5.3.4 workflow on n8n page 2"
+          git commit -m "Record full V5.3.4 n8n verification"
           git push
 
   publish:
