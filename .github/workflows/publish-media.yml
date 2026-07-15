@@ -1,5 +1,5 @@
 name: Publish CHEMODAN media library
-# list-page-preflight-after-key-rotation: 2026-07-15T00:04:00Z
+# list-page-2-preflight-after-key-rotation: 2026-07-15T00:05:00Z
 
 on:
   push:
@@ -18,16 +18,16 @@ jobs:
     runs-on: ubuntu-latest
     env:
       N8N_API_KEY: ${{ secrets.N8N_API_KEY }}
-      N8N_API_URL: https://hot-tours-bot.app.n8n.cloud/api/v1/workflows?limit=100
+      N8N_API_URL: https://hot-tours-bot.app.n8n.cloud/api/v1/workflows?limit=100&cursor=eyJsaW1pdCI6MTAwLCJvZmZzZXQiOjEwMH0%3D
     steps:
       - uses: actions/checkout@v4
-      - name: Read first workflow page and cursor
+      - name: Read second workflow page and cursor
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p automation-results
           if [ -z "${N8N_API_KEY:-}" ]; then
-            printf '%s\n' '{"status":"FAIL","operation":"LIST_PAGE_READ_ONLY_PREFLIGHT","error":"N8N_API_KEY secret is empty or unavailable"}' > automation-results/n8n-preflight.json
+            printf '%s\n' '{"status":"FAIL","operation":"LIST_PAGE_2_READ_ONLY_PREFLIGHT","error":"N8N_API_KEY secret is empty or unavailable"}' > automation-results/n8n-preflight.json
             exit 1
           fi
           api_code="$(curl --http1.1 --silent --show-error --location --retry 3 --retry-all-errors --retry-delay 3 --connect-timeout 20 --max-time 90 -A 'CHEMODAN-SAFE-LIST-PAGE/1.0' -H "X-N8N-API-KEY: ${N8N_API_KEY}" -H 'Accept: application/json' -o /tmp/n8n.json -w '%{http_code}' "${N8N_API_URL}" || true)"
@@ -42,7 +42,7 @@ jobs:
           matches=[w for w in items if 'CHEMODAN NEWS V5.3.3 BRANDED MEDIA' in str(w.get('name',''))]
           report={
             'status':'PASS' if code=='200' else 'FAIL',
-            'operation':'LIST_PAGE_READ_ONLY_PREFLIGHT',
+            'operation':'LIST_PAGE_2_READ_ONLY_PREFLIGHT',
             'api_http_code':code,
             'page_item_count':len(items),
             'target_match_count':len(matches),
@@ -55,7 +55,7 @@ jobs:
           open('automation-results/n8n-preflight.json','w',encoding='utf-8').write(json.dumps(report,ensure_ascii=False,indent=2)+'\n')
           if report['status']!='PASS': raise SystemExit(1)
           PY
-      - name: Commit list-page report
+      - name: Commit second-page report
         if: always()
         shell: bash
         run: |
@@ -65,7 +65,7 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add automation-results/n8n-preflight.json
           git diff --cached --quiet && exit 0
-          git commit -m "Record first n8n workflow page and cursor"
+          git commit -m "Record second n8n workflow page and cursor"
           git push
 
   publish:
