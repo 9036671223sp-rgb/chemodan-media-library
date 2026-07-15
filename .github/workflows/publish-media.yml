@@ -58,58 +58,23 @@ jobs:
           git remote add origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
           git push --force origin gh-pages
 
-  n8n-api-preflight:
+  n8n-v5-3-4-safe-patch:
     runs-on: ubuntu-latest
     env:
       N8N_API_KEY: ${{ secrets.N8N_API_KEY }}
       N8N_BASE: https://hot-tours-bot.app.n8n.cloud/api/v1
-      REPORT: automation-results/n8n-api-preflight.json
+      REPORT: automation-results/n8n-v5.3.4-patch-result.json
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Locate imported workflow via public API
+      - name: Apply atomic safe patch and verify
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p "$(dirname "$REPORT")"
-          python3 <<'PY'
-          import json, os, urllib.request, urllib.parse
-          from pathlib import Path
-          out=Path(os.environ['REPORT'])
-          report={'status':'FAIL','operation':'READ_ONLY_LIST_PREFLIGHT','error':None}
-          try:
-              key=os.environ.get('N8N_API_KEY','')
-              if not key: raise RuntimeError('N8N_API_KEY secret is empty or unavailable')
-              headers={'X-N8N-API-KEY':key,'Accept':'application/json'}
-              base=os.environ['N8N_BASE'].rstrip('/')+'/workflows?limit=100'
-              workflows=[]
-              cursor=None
-              for _ in range(20):
-                  url=base + (('&cursor='+urllib.parse.quote(cursor)) if cursor else '')
-                  req=urllib.request.Request(url,headers=headers)
-                  with urllib.request.urlopen(req,timeout=60) as r:
-                      payload=json.loads(r.read().decode())
-                  batch=payload.get('data',payload if isinstance(payload,list) else [])
-                  workflows.extend(batch)
-                  cursor=payload.get('nextCursor') if isinstance(payload,dict) else None
-                  if not cursor: break
-              matches=[]
-              for w in workflows:
-                  name=str(w.get('name',''))
-                  if 'CHEMODAN NEWS V5.3.3 BRANDED MEDIA' in name or w.get('id')=='1MagZs46gwN9Q0rZ':
-                      matches.append({'id':w.get('id'),'name':name,'active':w.get('active')})
-              if len(matches)!=1:
-                  raise RuntimeError(f'Expected exactly one V5.3.3 workflow, found {len(matches)}')
-              match=matches[0]
-              report.update({'status':'PASS','workflow_id':match['id'],'workflow_name':match['name'],'active':match['active'],'total_workflows_scanned':len(workflows)})
-          except Exception as e:
-              report['error']=str(e)
-          out.write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
-          if report['status']!='PASS': raise SystemExit(1)
-          PY
+          python3 .github/scripts/apply_n8n_v534_patch.py
 
-      - name: Commit preflight report
+      - name: Commit patch report
         if: always()
         shell: bash
         run: |
@@ -119,5 +84,5 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add "$REPORT"
           git diff --cached --quiet && exit 0
-          git commit -m "Locate n8n V5.3.3 workflow through API"
+          git commit -m "Record n8n V5.3.4 safe patch result"
           git push origin main
