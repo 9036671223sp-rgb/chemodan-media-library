@@ -1,7 +1,0 @@
-{
-  "operation": "SAFE_RUN_PROBE",
-  "api_v1_http": "405",
-  "api_v1_response": "{\"message\":\"POST method not allowed\"}",
-  "rest_http": "401",
-  "rest_response": "{\"status\":\"error\",\"message\":\"Unauthorized\"}"
-}
