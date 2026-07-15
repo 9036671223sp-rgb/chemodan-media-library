@@ -2,14 +2,15 @@
   "status": "FAIL",
   "operation": "PATCH_V5.3.3_TO_V5.3.4_SAFE",
   "workflow_id": "iMagZs46gwN9Q0rZ",
-  "backup_mode": null,
+  "backup_mode": "APPROVED_V5.3.3_ARTIFACT_PLUS_ATOMIC_ROLLBACK",
   "backup_workflow_id": null,
   "rollback_performed": false,
-  "error": "Current workflow hash differs from approved V5.3.3: 66d7bcf37b267277d9c01f3b21fb3d8c2287924a97e951fc8dcb91edc95235c3",
+  "error": "HTTP 400 PUT workflows/iMagZs46gwN9Q0rZ: {\"message\":\"request/body/nodes/0/notes must be string\"}",
   "before": {
     "name": "CHEMODAN NEWS V5.3.3 BRANDED MEDIA — URL DEPLOYED VERIFIED — SAFE MANUAL NO SEND",
     "active": false,
     "node_count": 44,
     "canonical_sha256": "66d7bcf37b267277d9c01f3b21fb3d8c2287924a97e951fc8dcb91edc95235c3"
-  }
+  },
+  "backup_error": "HTTP 400 POST workflows: {\"message\":\"request/body/nodes/0/notes must be string\"}"
 }
