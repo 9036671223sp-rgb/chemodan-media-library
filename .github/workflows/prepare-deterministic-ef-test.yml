@@ -1,50 +1,14 @@
-name: Lock deterministic EF test guard
+name: Retired EF test cleanup
+
 on:
-  push:
-    branches: [main]
-    paths: ['.github/workflows/prepare-deterministic-ef-test.yml']
   workflow_dispatch:
+
 permissions:
-  contents: write
+  contents: read
+
 jobs:
-  lock:
+  retired:
     runs-on: ubuntu-latest
-    env:
-      N8N_API_KEY: ${{ secrets.N8N_API_KEY }}
-      BASE: https://hot-tours-bot.app.n8n.cloud/api/v1
-      TARGET: 6oph5ifW9zc5kYGP
-      REPORT: automation-results/deterministic-ef-test.json
     steps:
-      - uses: actions/checkout@v4
-      - name: Lock guard
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p automation-results
-          python3 <<'PY'
-          import json,os,urllib.request
-          base=os.environ['BASE']; key=os.environ['N8N_API_KEY']; target=os.environ['TARGET']
-          def api(method,path,payload=None):
-              data=None; headers={'X-N8N-API-KEY':key,'Accept':'application/json'}
-              if payload is not None:
-                  data=json.dumps(payload,ensure_ascii=False).encode(); headers['Content-Type']='application/json'
-              req=urllib.request.Request(base+path,data=data,method=method,headers=headers)
-              with urllib.request.urlopen(req,timeout=90) as r:
-                  raw=r.read().decode(); return json.loads(raw) if raw else {}
-          w=api('GET',f'/workflows/{target}')
-          guard=next(n for n in w['nodes'] if n.get('name','').startswith('03 GUARD'))
-          guard['parameters']['jsCode']="return [{json:{allowed:false,reason:'LOCKED_AFTER_TEST',telegram_send_disabled:true,timestamp:new Date().toISOString()}}];"
-          api('PUT',f'/workflows/{target}',{'name':'CHEMODAN NEWS V5.3.4 — ONE SHOT EF TEST — COMPLETED LOCKED','nodes':w['nodes'],'connections':w.get('connections',{}),'settings':{}})
-          full=api('GET',f'/workflows/{target}')
-          code=next(n for n in full['nodes'] if n.get('name','').startswith('03 GUARD'))['parameters']['jsCode']
-          out={'status':'PASS','operation':'LOCK_EF_TEST_GUARD','workflow_id':full.get('id'),'workflow_name':full.get('name'),'active':full.get('active'),'locked_after_test':'LOCKED_AFTER_TEST' in code,'schedule_trigger_count':sum('scheduletrigger' in str(n.get('type','')).lower() for n in full.get('nodes',[])),'webhook_count':sum('webhook' in str(n.get('type','')).lower() for n in full.get('nodes',[]))}
-          assert out['active'] is False and out['locked_after_test'] and out['schedule_trigger_count']==0 and out['webhook_count']==0
-          open(os.environ['REPORT'],'w',encoding='utf-8').write(json.dumps(out,ensure_ascii=False,indent=2)+'\n')
-          PY
-      - name: Save report
-        if: always()
-        run: |
-          git config user.name github-actions[bot]
-          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add automation-results/deterministic-ef-test.json
-          git diff --cached --quiet || (git commit -m 'Record locked EF test guard' && git push)
+      - name: Retired
+        run: echo "One-shot EF test completed and retired."
