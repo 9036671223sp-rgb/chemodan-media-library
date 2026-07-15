@@ -1,16 +1,35 @@
 {
-  "status": "FAIL",
+  "status": "PASS",
   "operation": "PATCH_V5.3.3_TO_V5.3.4_SAFE",
   "workflow_id": "iMagZs46gwN9Q0rZ",
-  "backup_mode": "APPROVED_V5.3.3_ARTIFACT_PLUS_ATOMIC_ROLLBACK",
-  "backup_workflow_id": null,
+  "backup_mode": "N8N_INACTIVE_DUPLICATE",
+  "backup_workflow_id": "XrbtPuxjbJJKNla5",
   "rollback_performed": false,
-  "error": "HTTP 400 PUT workflows/iMagZs46gwN9Q0rZ: {\"message\":\"request/body/settings must NOT have additional properties\"}",
+  "error": null,
   "before": {
     "name": "CHEMODAN NEWS V5.3.3 BRANDED MEDIA — URL DEPLOYED VERIFIED — SAFE MANUAL NO SEND",
     "active": false,
     "node_count": 44,
-    "canonical_sha256": "5569c4cce865dc755076087ade244e6f76ccf79724589a96f9a8804fc6363cd4"
+    "canonical_sha256": "6b811d53adee29b748322449c78406571e1e6d8e5733da4fb82fbef6fb5502c1"
   },
-  "backup_error": "HTTP 400 POST workflows: {\"message\":\"request/body/settings must NOT have additional properties\"}"
+  "result": "PATCHED_AND_VERIFIED",
+  "changed_nodes": [
+    "02 SETTINGS | безопасность и параметры",
+    "08B EXTRACT | очистить полный текст статьи новой новости",
+    "09B BUILD | Command Center V3.1 request V5.2 STAGE-GUARD",
+    "12B TEMPLATE SELECTOR | library V2 rotation + final dedupe guard",
+    "16 OWNER-GATE | INLINE SAFE GUARD V5.2 build EF/B2B or block",
+    "16A BUILD | DeepSeek media technical JSON request",
+    "17 MEDIA PICKER | V5.3 tag + channel + last 3 covers",
+    "18 MEDIA GUARD | V5.3 sendPhoto safety gate",
+    "26 FINAL | V5.3 branded media proof + execution log row"
+  ],
+  "after": {
+    "name": "CHEMODAN NEWS V5.3.4 BRANDED MEDIA — PICKER FIXED — SAFE MANUAL NO SEND",
+    "active": false,
+    "node_count": 44,
+    "canonical_sha256": "213f4e797bca5f08f260befdcbde408285532c0fc648c49b7052045d7846e97d",
+    "schedule_trigger_count": 0,
+    "webhook_count": 0
+  }
 }
