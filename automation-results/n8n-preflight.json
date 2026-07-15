@@ -1,5 +1,5 @@
 {
   "status": "FAIL",
-  "operation": "READ_ONLY_PREFLIGHT",
-  "error": "HTTP Error 404: Not Found"
+  "operation": "READ_ONLY_LIST_PREFLIGHT",
+  "error": "HTTP Error 502: Bad Gateway"
 }
