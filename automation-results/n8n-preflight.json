@@ -1,5 +1,6 @@
 {
   "status": "FAIL",
   "operation": "READ_ONLY_LIST_PREFLIGHT",
+  "attempts": 5,
   "error": "HTTP Error 502: Bad Gateway"
 }
