@@ -1,4 +1,4 @@
-name: Prepare deterministic one-shot EF test
+name: Finalize deterministic EF-only safety check
 on:
   push:
     branches: [main]
@@ -7,26 +7,25 @@ on:
 permissions:
   contents: write
 jobs:
-  prepare:
+  verify:
     runs-on: ubuntu-latest
     env:
       N8N_API_KEY: ${{ secrets.N8N_API_KEY }}
-      N8N_BASE: https://hot-tours-bot.app.n8n.cloud/api/v1
-      SOURCE_ID: iMagZs46gwN9Q0rZ
-      TARGET_ID: 6oph5ifW9zc5kYGP
+      BASE: https://hot-tours-bot.app.n8n.cloud/api/v1
+      TARGET: 6oph5ifW9zc5kYGP
       REPORT: automation-results/deterministic-ef-test.json
     steps:
       - uses: actions/checkout@v4
-      - name: Replace test clone with deterministic EF-only workflow
+      - name: Remove legacy note and verify EF-only workflow
         shell: bash
         run: |
           set -u
           mkdir -p automation-results
           python3 <<'PY'
-          import json, os, urllib.request, urllib.error, copy
-          report=os.environ['REPORT']; out={'status':'FAIL','operation':'PREPARE_DETERMINISTIC_EF_TEST'}
+          import json,os,urllib.request,urllib.error
+          out={'status':'FAIL','operation':'FINALIZE_DETERMINISTIC_EF_TEST'}
           try:
-              base=os.environ['N8N_BASE']; key=os.environ['N8N_API_KEY']; src=os.environ['SOURCE_ID']; target=os.environ['TARGET_ID']
+              base=os.environ['BASE']; key=os.environ['N8N_API_KEY']; target=os.environ['TARGET']
               def api(method,path,payload=None):
                   data=None; h={'X-N8N-API-KEY':key,'Accept':'application/json'}
                   if payload is not None:
@@ -36,41 +35,21 @@ jobs:
                       with urllib.request.urlopen(req,timeout=90) as r:
                           raw=r.read().decode(); return json.loads(raw) if raw else {}
                   except urllib.error.HTTPError as e:
-                      body=e.read().decode('utf-8','replace')[:1500]
-                      raise RuntimeError(f'{method} {path} HTTP {e.code}: {body}') from e
-              w=api('GET',f'/workflows/{src}')
-              by={n['name']:n for n in w['nodes']}
-              start=copy.deepcopy(by['01 START | ручной запуск OFF']); start.update({'name':'01 START | ONE SHOT EF','position':[0,0]})
-              read=copy.deepcopy(by['12A SHEETS READ | AI_EDITOR_LOG template history']); read.update({'name':'02 READ | one-shot sent history','position':[240,0]})
-              version='V5.3.4_ONE_SHOT_EF_DETERMINISTIC_V1'
-              name='CHEMODAN NEWS V5.3.4 — ONE SHOT EF DETERMINISTIC — MANUAL INACTIVE'
-              caption='ОАЭ снова становятся доступнее: Space Travel с августа запускает блочную программу на рейсах flydubai из 9 городов России. В цену уже включены багаж до 20 кг и ручная кладь до 7 кг, а туры на двоих стартуют от 140 тыс. рублей. Это хороший момент сравнить даты и отели: скидки в некоторых объектах доходят до 55%. Елена Фролова советует смотреть не только на цену, но и на включённый багаж и условия проживания.\n\n— Источник: АТОР / Вестник АТОР'
-              image='https://9036671223sp-rgb.github.io/chemodan-media-library/CHEMODAN_MEDIA_LIBRARY_V3/money_prices/EF/money_prices_EF_01.jpg'
-              guard_code=f'''const rows=$input.all().map(i=>i.json||{{}});\nconst VERSION={json.dumps(version)};\nconst already=rows.some(r=>String(r.workflow_version||'')===VERSION && String(r.deepseek_status||'').includes('V5_3_MEDIA_SEND_SUCCESS'));\nif(already) return [{{json:{{allowed:false,reason:'ALREADY_SENT',workflow_version:VERSION}}}}];\nreturn [{{json:{{allowed:true,media_guard_passed:true,workflow_name:{json.dumps(name)},workflow_version:VERSION,telegram_chat_id:'@EF_Travel_Club',image_url:{json.dumps(image)},image_tag:'money_prices',image_filename:'money_prices_EF_01.jpg',telegram_caption:{json.dumps(caption)},target_channel_key:'EF',target_channel:'@EF_Travel_Club',source_title:'Туры в ОАЭ на прямых рейсах: цены – от 140 тыс. рублей на двоих, скидки в отелях – до 55%',source_label:'АТОР / Вестник АТОР'}}}}];'''
-              guard={'parameters':{'jsCode':guard_code},'id':'one-shot-guard-data','name':'03 GUARD + DATA | EF one-shot approved','type':'n8n-nodes-base.code','typeVersion':2,'position':[480,0]}
-              cond=copy.deepcopy(by['19 IF | V5.3 Media Guard passed?']); cond.update({'name':'04 IF | one-shot not sent?','position':[720,0]}); cond['parameters']['conditions']['boolean'][0]['value1']='={{ $json.allowed }}'
-              tg=copy.deepcopy(by['22 TELEGRAM | V5.3 sendPhoto EF/B2B only']); tg.update({'name':'05 TELEGRAM | ONE SHOT EF ONLY','position':[960,-80],'continueOnFail':True})
-              result_code="""const prepared=$('03 GUARD + DATA | EF one-shot approved').all().map(i=>i.json||{}).find(x=>x.allowed===true)||{};\nconst tg=$input.first().json||{};\nfunction txt(v){return String(v??'').trim();}\nfunction pack(v){try{return typeof v==='string'?v:JSON.stringify(v);}catch(e){return String(v);}}\nconst mid=txt(tg?.result?.message_id||tg?.message_id||tg?.result?.result?.message_id);\nconst bad=Boolean(tg?.error)||pack(tg).toLowerCase().includes('bad request')||pack(tg).toLowerCase().includes('error');\nconst ok=!bad&&Boolean(mid||tg?.ok===true||tg?.result?.ok===true);\nreturn [{json:{...prepared,telegram_result_compact:pack(tg).slice(0,1800),telegram_send_success:ok?'TRUE':'FALSE_OR_UNKNOWN',telegram_ok:ok,message_id:mid,telegram_error_message:ok?'':pack(tg).slice(0,600),post_send_timestamp:new Date().toISOString(),post_send_log_status:ok?'V5_3_MEDIA_SEND_SUCCESS':'V5_3_MEDIA_SEND_ERROR_OR_UNKNOWN',media_result_status:ok?'V5_3_MEDIA_SEND_SUCCESS':'V5_3_MEDIA_SEND_ERROR_OR_UNKNOWN'}}];"""
-              result={'parameters':{'jsCode':result_code},'id':'one-shot-result','name':'06 RESULT | message_id','type':'n8n-nodes-base.code','typeVersion':2,'position':[1200,-80]}
-              log=copy.deepcopy(by['24 SHEETS | AI_EDITOR_LOG V5.3 media result']); log.update({'name':'07 LOG | AI_EDITOR_LOG one-shot EF result','position':[1440,-80]})
-              nodes=[start,read,guard,cond,tg,result,log]
-              connections={
-                start['name']:{'main':[[{'node':read['name'],'type':'main','index':0}]]},
-                read['name']:{'main':[[{'node':guard['name'],'type':'main','index':0}]]},
-                guard['name']:{'main':[[{'node':cond['name'],'type':'main','index':0}]]},
-                cond['name']:{'main':[[{'node':tg['name'],'type':'main','index':0}],[]]},
-                tg['name']:{'main':[[{'node':result['name'],'type':'main','index':0}]]},
-                result['name']:{'main':[[{'node':log['name'],'type':'main','index':0}]]}
-              }
-              payload={'name':name,'nodes':nodes,'connections':connections,'settings':{}}
+                      raise RuntimeError(f'{method} {path} HTTP {e.code}: '+e.read().decode('utf-8','replace')[:1000]) from e
+              w=api('GET',f'/workflows/{target}')
+              for n in w.get('nodes',[]):
+                  if n.get('type')=='n8n-nodes-base.telegram':
+                      n['notes']='Deterministic one-shot: EF Travel Club only. Repeat blocked by AI_EDITOR_LOG.'
+              payload={'name':w['name'],'nodes':w['nodes'],'connections':w.get('connections',{}),'settings':{}}
               api('PUT',f'/workflows/{target}',payload)
               full=api('GET',f'/workflows/{target}')
               text=json.dumps(full,ensure_ascii=False)
-              out={'status':'PASS','operation':'PREPARE_DETERMINISTIC_EF_TEST','workflow_id':full.get('id'),'workflow_name':full.get('name'),'active':full.get('active'),'node_count':len(full.get('nodes',[])),'schedule_trigger_count':sum('scheduletrigger' in str(n.get('type','')).lower() for n in full.get('nodes',[])),'webhook_count':sum('webhook' in str(n.get('type','')).lower() for n in full.get('nodes',[])),'telegram_node_count':sum(n.get('type')=='n8n-nodes-base.telegram' for n in full.get('nodes',[])),'ef_only':('@EF_Travel_Club' in text and '@travelclub_elena' not in text and '@frolova_turagent' not in text),'deterministic_image':image in text,'repeat_guard_present':'ALREADY_SENT' in text}
-              assert out['active'] is False and out['node_count']==7 and out['schedule_trigger_count']==0 and out['webhook_count']==0 and out['telegram_node_count']==1 and out['ef_only'] and out['deterministic_image'] and out['repeat_guard_present']
+              out={'status':'PASS','operation':'FINALIZE_DETERMINISTIC_EF_TEST','workflow_id':full.get('id'),'workflow_name':full.get('name'),'active':full.get('active'),'node_count':len(full.get('nodes',[])),'schedule_trigger_count':sum('scheduletrigger' in str(n.get('type','')).lower() for n in full.get('nodes',[])),'webhook_count':sum('webhook' in str(n.get('type','')).lower() for n in full.get('nodes',[])),'telegram_node_count':sum(n.get('type')=='n8n-nodes-base.telegram' for n in full.get('nodes',[])),'ef_present':'@EF_Travel_Club' in text,'b2b_present':'@travelclub_elena' in text,'frolova_present':'@frolova_turagent' in text,'deterministic_image':'money_prices_EF_01.jpg' in text,'repeat_guard_present':'ALREADY_SENT' in text}
+              if not (out['active'] is False and out['node_count']==7 and out['schedule_trigger_count']==0 and out['webhook_count']==0 and out['telegram_node_count']==1 and out['ef_present'] and not out['b2b_present'] and not out['frolova_present'] and out['deterministic_image'] and out['repeat_guard_present']):
+                  raise RuntimeError('Safety contract failed')
           except Exception as e:
-              out['error']=str(e); out['error_type']=type(e).__name__
-          open(report,'w',encoding='utf-8').write(json.dumps(out,ensure_ascii=False,indent=2)+'\n')
+              out['status']='FAIL'; out['error']=str(e); out['error_type']=type(e).__name__
+          open(os.environ['REPORT'],'w',encoding='utf-8').write(json.dumps(out,ensure_ascii=False,indent=2)+'\n')
           if out['status']!='PASS': raise SystemExit(1)
           PY
       - name: Save report
@@ -79,4 +58,4 @@ jobs:
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
           git add automation-results/deterministic-ef-test.json
-          git diff --cached --quiet || (git commit -m 'Record deterministic EF test preparation' && git push)
+          git diff --cached --quiet || (git commit -m 'Record final deterministic EF safety check' && git push)
