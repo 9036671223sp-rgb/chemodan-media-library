@@ -1,4 +1,5 @@
 name: Create one-shot EF test workflow
+# trigger-retry: 1
 on:
   push:
     branches: [main]
