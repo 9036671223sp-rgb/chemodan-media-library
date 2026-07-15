@@ -1,0 +1,16 @@
+{
+  "status": "PASS",
+  "operation": "PREPARE_DETERMINISTIC_EF_TEST",
+  "workflow_id": "6oph5ifW9zc5kYGP",
+  "workflow_name": "CHEMODAN NEWS V5.3.4 — ONE SHOT EF DETERMINISTIC — MANUAL INACTIVE",
+  "active": false,
+  "node_count": 7,
+  "schedule_trigger_count": 0,
+  "webhook_count": 0,
+  "telegram_node_count": 1,
+  "ef_only": false,
+  "deterministic_image": true,
+  "repeat_guard_present": true,
+  "error": "",
+  "error_type": "AssertionError"
+}
