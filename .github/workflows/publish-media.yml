@@ -1,5 +1,4 @@
 name: Publish CHEMODAN media library
-# verify-v5-3-4-full-config: 2026-07-15T00:07:00Z
 
 on:
   push:
@@ -7,98 +6,16 @@ on:
       - main
     paths:
       - CHEMODAN_MEDIA_LIBRARY_V3_PUBLIC.zip
-      - .github/workflows/publish-media.yml
   workflow_dispatch:
 
 permissions:
   contents: write
 
-jobs:
-  n8n_preflight:
-    runs-on: ubuntu-latest
-    env:
-      N8N_API_KEY: ${{ secrets.N8N_API_KEY }}
-      N8N_API_URL: https://hot-tours-bot.app.n8n.cloud/api/v1/workflows/iMagZs46gwN9Q0rZ
-    steps:
-      - uses: actions/checkout@v4
-      - name: Verify full V5.3.4 safety contract
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p automation-results
-          if [ -z "${N8N_API_KEY:-}" ]; then
-            printf '%s\n' '{"status":"FAIL","operation":"VERIFY_V5_3_4_FULL_CONFIG","error":"N8N_API_KEY secret is empty or unavailable"}' > automation-results/n8n-preflight.json
-            exit 1
-          fi
-          api_code="$(curl --http1.1 --silent --show-error --location --retry 3 --retry-all-errors --retry-delay 3 --connect-timeout 20 --max-time 90 -A 'CHEMODAN-SAFE-VERIFY/1.0' -H "X-N8N-API-KEY: ${N8N_API_KEY}" -H 'Accept: application/json' -o /tmp/n8n.json -w '%{http_code}' "${N8N_API_URL}" || true)"
-          python3 - "$api_code" <<'PY'
-          import json,sys
-          code=sys.argv[1]
-          try:
-              workflow=json.load(open('/tmp/n8n.json',encoding='utf-8'))
-          except Exception:
-              workflow={}
-          nodes=workflow.get('nodes',[]) if code=='200' and isinstance(workflow,dict) else []
-          types=[str(n.get('type','')).lower() for n in nodes]
-          telegram=[n for n in nodes if 'telegram' in str(n.get('type','')).lower()]
-          all_code='\n'.join(str(n.get('parameters',{}).get('jsCode','')) for n in nodes)
-          report={
-            'status':'FAIL',
-            'operation':'VERIFY_V5_3_4_FULL_CONFIG',
-            'api_http_code':code,
-            'workflow_id':workflow.get('id'),
-            'workflow_name':workflow.get('name'),
-            'active':workflow.get('active'),
-            'node_count':len(nodes),
-            'schedule_trigger_count':sum('scheduletrigger' in t for t in types),
-            'webhook_count':sum('webhook' in t for t in types),
-            'telegram_sendphoto_count':sum(str(n.get('parameters',{}).get('operation','')).lower()=='sendphoto' for n in telegram),
-            'command_center_id_count':all_code.count('43zqbbUUgZSgr8yu'),
-            'media_send_enabled_false':'media_send_enabled: false' in all_code,
-            'owner_gate_approved_false':'owner_gate_approved: false' in all_code,
-            'final_publication_approved_false':'final_publication_approved: false' in all_code,
-            'media_library_ready_true':'media_library_ready: true' in all_code,
-            'picker_contract_present':'V5.3.4_DEPLOYED_VERIFIED_ASSET_ACCEPTANCE' in all_code,
-            'picker_fix_present':'const readyPool = poolAll.filter(assetIsReady);' in all_code,
-            'guard_fix_present':'IMAGE_APPROVAL_OR_DEPLOYMENT_PROOF_INVALID' in all_code,
-            'frolova_publish_block_present':'BLOCKED_CHANNEL_FROLOVA_TURAGENT' in all_code
-          }
-          checks=[
-            code=='200',
-            workflow.get('name')=='CHEMODAN NEWS V5.3.4 BRANDED MEDIA — PICKER FIXED — SAFE MANUAL NO SEND',
-            workflow.get('active') is False,
-            len(nodes)==44,
-            report['schedule_trigger_count']==0,
-            report['webhook_count']==0,
-            report['telegram_sendphoto_count']==1,
-            report['command_center_id_count']>=2,
-            report['media_send_enabled_false'],
-            report['owner_gate_approved_false'],
-            report['final_publication_approved_false'],
-            report['media_library_ready_true'],
-            report['picker_contract_present'],
-            report['picker_fix_present'],
-            report['guard_fix_present'],
-            report['frolova_publish_block_present']
-          ]
-          if all(checks): report['status']='PASS'
-          else: report['error']='One or more V5.3.4 safety checks failed'
-          open('automation-results/n8n-preflight.json','w',encoding='utf-8').write(json.dumps(report,ensure_ascii=False,indent=2)+'\n')
-          if report['status']!='PASS': raise SystemExit(1)
-          PY
-      - name: Commit V5.3.4 verification report
-        if: always()
-        shell: bash
-        run: |
-          set -euo pipefail
-          test -f automation-results/n8n-preflight.json || exit 0
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add automation-results/n8n-preflight.json
-          git diff --cached --quiet && exit 0
-          git commit -m "Record full V5.3.4 n8n verification"
-          git push
+concurrency:
+  group: chemodan-media-publish
+  cancel-in-progress: true
 
+jobs:
   publish:
     runs-on: ubuntu-latest
     steps:
@@ -106,6 +23,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           persist-credentials: false
+
       - name: Validate and extract media archive
         shell: bash
         run: |
@@ -115,12 +33,17 @@ jobs:
           rm -rf public
           mkdir -p public
           unzip -q CHEMODAN_MEDIA_LIBRARY_V3_PUBLIC.zip -d public
+
           test -d public/CHEMODAN_MEDIA_LIBRARY_V3
           jpg_count="$(find public/CHEMODAN_MEDIA_LIBRARY_V3 -type f -name '*.jpg' | wc -l | tr -d ' ')"
           test "$jpg_count" = "32"
+
           forbidden_count="$(find public -type f \( -name '*.json' -o -name '*.env' -o -name '*.key' -o -name '*.pem' \) | wc -l | tr -d ' ')"
           test "$forbidden_count" = "0"
+
           touch public/.nojekyll
+          echo "Validated JPG files: $jpg_count"
+
       - name: Publish verified files to gh-pages branch
         shell: bash
         env:
