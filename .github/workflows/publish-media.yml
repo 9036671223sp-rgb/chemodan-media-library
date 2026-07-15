@@ -20,36 +20,31 @@ jobs:
       N8N_URL: https://hot-tours-bot.app.n8n.cloud/api/v1/workflows?limit=250
     steps:
       - uses: actions/checkout@v4
-      - name: Read workflow list and locate target with retries
+      - name: Read workflow list with curl
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p automation-results
           if [ -z "${N8N_API_KEY:-}" ]; then
-            printf '%s\n' '{"status":"FAIL","operation":"READ_ONLY_LIST_PREFLIGHT","error":"N8N_API_KEY secret is empty or unavailable"}' > automation-results/n8n-preflight.json
+            printf '%s\n' '{"status":"FAIL","operation":"CURL_READ_ONLY_PREFLIGHT","error":"N8N_API_KEY secret is empty or unavailable"}' > automation-results/n8n-preflight.json
             exit 1
           fi
-          python3 - <<'PY'
-          import json, os, time, urllib.error, urllib.request
-          path='automation-results/n8n-preflight.json'
-          last_error=None
-          payload=None
-          for attempt in range(1,6):
-              try:
-                  req=urllib.request.Request(os.environ['N8N_URL'],headers={'X-N8N-API-KEY':os.environ['N8N_API_KEY'],'Accept':'application/json'})
-                  with urllib.request.urlopen(req,timeout=60) as r: payload=json.load(r)
-                  break
-              except Exception as exc:
-                  last_error=str(exc)
-                  if attempt<5: time.sleep(attempt*5)
-          if payload is None:
-              report={'status':'FAIL','operation':'READ_ONLY_LIST_PREFLIGHT','attempts':5,'error':last_error}
+          http_code="$(curl --http1.1 --silent --show-error --location --retry 5 --retry-all-errors --retry-delay 5 --connect-timeout 20 --max-time 120 -A 'CHEMODAN-SAFE-PREFLIGHT/1.0' -H "X-N8N-API-KEY: ${N8N_API_KEY}" -H 'Accept: application/json' -o /tmp/n8n.json -w '%{http_code}' "${N8N_URL}" || true)"
+          python3 - "$http_code" <<'PY'
+          import json,sys
+          code=sys.argv[1]
+          try:
+              payload=json.load(open('/tmp/n8n.json',encoding='utf-8'))
+          except Exception:
+              payload={}
+          if code!='200':
+              report={'status':'FAIL','operation':'CURL_READ_ONLY_PREFLIGHT','http_code':code,'error':'n8n API did not return HTTP 200'}
           else:
               items=payload.get('data',[]) if isinstance(payload,dict) else []
               matches=[w for w in items if 'CHEMODAN NEWS V5.3.3 BRANDED MEDIA' in str(w.get('name',''))]
-              report={'status':'PASS' if len(matches)==1 else 'FAIL','operation':'READ_ONLY_LIST_PREFLIGHT','attempts_used':attempt,'visible_workflow_count':len(items),'target_match_count':len(matches),'target_workflow_id':matches[0].get('id') if len(matches)==1 else None,'target_workflow_name':matches[0].get('name') if len(matches)==1 else None,'target_active':matches[0].get('active') if len(matches)==1 else None}
+              report={'status':'PASS' if len(matches)==1 else 'FAIL','operation':'CURL_READ_ONLY_PREFLIGHT','http_code':code,'visible_workflow_count':len(items),'target_match_count':len(matches),'target_workflow_id':matches[0].get('id') if len(matches)==1 else None,'target_workflow_name':matches[0].get('name') if len(matches)==1 else None,'target_active':matches[0].get('active') if len(matches)==1 else None}
               if len(matches)!=1: report['error']='Expected exactly one visible V5.3.3 target workflow'
-          open(path,'w',encoding='utf-8').write(json.dumps(report,ensure_ascii=False,indent=2)+'\n')
+          open('automation-results/n8n-preflight.json','w',encoding='utf-8').write(json.dumps(report,ensure_ascii=False,indent=2)+'\n')
           if report['status']!='PASS': raise SystemExit(1)
           PY
       - name: Commit preflight report
@@ -62,7 +57,7 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add automation-results/n8n-preflight.json
           git diff --cached --quiet && exit 0
-          git commit -m "Record retried n8n workflow visibility preflight"
+          git commit -m "Record curl n8n API preflight"
           git push
 
   publish:
