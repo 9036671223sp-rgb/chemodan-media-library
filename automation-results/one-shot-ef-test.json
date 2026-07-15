@@ -1,6 +1,6 @@
 {
   "status": "FAIL",
   "operation": "CREATE_ONE_SHOT_EF_TEST",
-  "error": "HTTP Error 400: Bad Request",
-  "error_type": "HTTPError"
+  "error": "POST /workflows HTTP 400: {\"message\":\"request/body/settings must NOT have additional properties\"}",
+  "error_type": "RuntimeError"
 }
